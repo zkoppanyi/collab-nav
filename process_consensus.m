@@ -263,20 +263,20 @@ while 1
             end
             
             % get d
-%             di = [];
-%             for j = 1 : size(links, 1)
-%                 idx = find(links(j, 2) == veh_ids);
-%                 agent2 = agents{links(j, 2)};
-%                 didx = find(agent2.links(:, 2) < 1000);
-%                 di = [di; length(didx)];
-%             end            
-%             d = max(di);
+            di = [];
+            for j = 1 : size(links, 1)
+                idx = find(links(j, 2) == veh_ids);
+                agent2 = agents{links(j, 2)};
+                didx = find(agent2.links(:, 2) < 1000);
+                di = [di; length(didx)];
+            end            
+            d = max(di);
             
-            C = eye(size(L,1)) - 1/vnz(ci)*L;
+            %C = eye(size(L,1)) - 1/vnz(ci)*L;
             %C = eye(size(L,1)) - 0.05*L;
 
-            w = C(i,i);
-            %w = 1 - size(links, 1)/(d+1);
+            %w = C(i,i);
+            w = 1 - size(links, 1)/(d+1);
             q      = w * agent.q;
             Omega  = w * agent.Omega;            
             dq     = w * agent.dq;
@@ -287,8 +287,8 @@ while 1
                 idx = find(links(j, 2) == veh_ids);
                 agent2 = agents{links(j, 2)};
                 
-                w = C(i, idx);
-                %w = 1/(d+1);
+                %w = C(i, idx);
+                w = 1/(d+1);
                 q     = q       + w*agent2.q;
                 Omega = Omega   + w*agent2.Omega;
                 dq     = dq     + w*agent2.dq;

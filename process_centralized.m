@@ -1,8 +1,5 @@
 clear variables;
 
-
-
-
 %% Settings 
 simulation_settings;
  

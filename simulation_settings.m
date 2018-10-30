@@ -1,4 +1,5 @@
 
+global_settings
 
 system_setting.AOI = [750 1100; 1250 1600];                                 % Area of interest
 sel_veh_id  = 20;                                                           % Selected vehicle ID
