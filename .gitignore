@@ -1,3 +1,13 @@
+# Matlab's
+*.png
+*.mat
+*.fig
+*.svg
+figures/*
+problems/*
+results/*
+sumo/*
+
 # Prerequisites
 *.d
 
