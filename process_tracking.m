@@ -64,6 +64,7 @@ n_veh = length(veh_ids_total);
 n_states = 4;
 x = zeros(n_veh*n_states, 1);
 P = eye(n_veh*n_states, n_veh*n_states);
+is_init = 0;
 
 for t = form_t : dt : to_t
 
@@ -116,7 +117,7 @@ for t = form_t : dt : to_t
         xy = inter_obs(3:4)';
         b  = inter_obs(5)/180*pi;
         v  = inter_obs(6);
-        upt = [xy', v, b];  
+        upt = [xy', v, b, is_init, t];  
         %upt = [xy'];  
         
         % Initialization
@@ -124,6 +125,7 @@ for t = form_t : dt : to_t
            x_init = [xy; v; b];
            P_init = eye(4,4);  
            agents{veh_id} = CoopAgent(veh_id, x_init, P_init, t, n_veh, system_setting);
+           %agents{veh_id} = CoopAgent2(veh_id, x_init, P_init, t, n_veh, system_setting);
         end        
             
         % Build prediction: F, f, Q
@@ -170,7 +172,25 @@ for t = form_t : dt : to_t
             end                      
             
             agents{veh_id}.comm(agents{veh_id_j}, 'share-states');
-            agents{veh_id}.comm(agents{veh_id_j}, 'UWB');            
+            if ~isempty(agents{veh_id}.links)
+                if isempty(find( agents{veh_id}.links(:, 2) == veh_id_j ))
+                    agents{veh_id}.comm(agents{veh_id_j}, 'UWB'); 
+                end
+            else
+                agents{veh_id}.comm(agents{veh_id_j}, 'UWB'); 
+            end
+            
+            % Check that the other vehicle has already measured the this
+            % vehicle
+            agents{veh_id_j}.comm(agents{veh_id}, 'share-states');
+            if ~isempty(agents{veh_id_j}.links)
+                if isempty(find( agents{veh_id_j}.links(:, 2) == veh_id ))
+                    agents{veh_id_j}.comm(agents{veh_id}, 'UWB');            
+                end
+            else
+                agents{veh_id_j}.comm(agents{veh_id}, 'UWB');
+            end
+            
             fprintf('%i ', veh_id_j);                        
         end        
         fprintf('\n');
@@ -212,8 +232,8 @@ for t = form_t : dt : to_t
         h = afun_concat(agent.h_int, agent.h_ext);
      
         % Extended Kalman filter
-        %P = agent.P;
-        P = eye(size(agent.P, 1))*1;
+        P = agent.P;
+        %P = eye(size(P, 1));
         [x, P] = ekf_predict(agent.f, agent.F, agent.x, P, agent.Q);
         [x, P] = ekf_update(x, z, h, H, P, R);
 
@@ -280,7 +300,7 @@ for t = form_t : dt : to_t
     if ~isempty(agent)
         x_hist = agent.my_x_hist();
         n = size(x_hist, 1);
-        dxy = (x_hist(end,:)-agent.gt(end, :))';
+        dxy = (x_hist(end,1:4)-agent.gt(end, 1:4))';
 
         figure(2); clf; hold on;                
 
@@ -335,7 +355,7 @@ end
 sol.agents = agents;
 sol.system_setting = system_setting;
 sol.problem = problem;
-save(sprintf('solution_state_sharing_%i', simulation_scenario), 'sol')
+save(['results\' sprintf('solution_state_sharing_%i', simulation_scenario)], 'sol')
 %save(sprintf('solution_tracking_%i_%i', simulation_scenario, gps_error_tests(test_i)*10), 'solution_state_sharing')
 
 end

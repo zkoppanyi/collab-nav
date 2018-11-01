@@ -91,6 +91,9 @@ classdef CoopAgent < matlab.mixin.Copyable
             
                 obj.x = x;
                 obj.P = P;
+                obj.Omega = inv(P);
+                obj.q = obj.Omega * x;
+                
                 obj.x_hist = [obj.x_hist; x2];
         end
             
@@ -317,6 +320,8 @@ classdef CoopAgent < matlab.mixin.Copyable
                  idxs_j = agent2.idxs;
                  obj.x(idxs_j) = agent2.x(idxs_j);
                  obj.P(idxs_j, idxs_j) = agent2.P(idxs_j, idxs_j);
+                 obj.q(idxs_j) = agent2.q(idxs_j);
+                 obj.Omega(idxs_j, idxs_j) = agent2.Omega(idxs_j, idxs_j);
                  obj.tracked = [obj.tracked; agent2.id];
                  %fprintf('Tracking: %i -> %i\n', obj.id, agent2.id);
               %end

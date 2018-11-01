@@ -2,6 +2,7 @@ clear variables;
 
 % Clear persistent variables
 clear CoopAgent
+clear CoopAgent2
 
 load('problem');
 
@@ -64,7 +65,7 @@ P_m = eye(n_veh*n_states, n_veh*n_states);
 
 init_rewind = form_t;
 init_i = 0;
-init_time = 0.2/dt;
+init_time = 0.5/dt;
 is_init = 0;
 t = form_t;
 iter_i = 0;
@@ -137,11 +138,9 @@ while 1
            x_init = [xy; v; b];
            P_init = eye(4,4);  
            agents{veh_id} = CoopAgent(veh_id, x_init, P_init, t, n_veh, system_setting);
+           %agents{veh_id} = CoopAgent2(veh_id, x_init, P_init, t, n_veh, system_setting);
            
-            % Initialized master filter x and P
-            %idxs = agents{veh_id}.idxs;
-            %master_agent.x(idxs) = agents{veh_id}.x(idxs);
-            %master_agent.P(idxs, idxs) = agents{veh_id}.P(idxs, idxs);   
+            is_init == 1;
             init_i = 0; % apply intialzation
             init_rewind = t;
         end        
@@ -191,9 +190,27 @@ while 1
             if isempty(agents{veh_id_j})
                 continue;
             end                      
-            
+                        
             %agents{veh_id}.comm(agents{veh_id_j}, 'share-states');
-            agents{veh_id}.comm(agents{veh_id_j}, 'UWB');            
+
+            if ~isempty(agents{veh_id}.links)
+                if isempty(find( agents{veh_id}.links(:, 2) == veh_id_j ))
+                    agents{veh_id}.comm(agents{veh_id_j}, 'UWB'); 
+                end
+            else
+                agents{veh_id}.comm(agents{veh_id_j}, 'UWB'); 
+            end
+            
+            % Check that the other vehicle has already measured the this
+            % vehicle
+            if ~isempty(agents{veh_id_j}.links)
+                if isempty(find( agents{veh_id_j}.links(:, 2) == veh_id ))
+                    agents{veh_id_j}.comm(agents{veh_id}, 'UWB');            
+                end
+            else
+                agents{veh_id_j}.comm(agents{veh_id}, 'UWB');
+            end
+            
             fprintf('%i ', veh_id_j);  
             
         end        
@@ -219,18 +236,26 @@ while 1
              agents{epoch(nidx, 2)}.comm(infra_nodes(i, :), 'v2i');
          end
      end
+     
+     % Initialize all vehciles: faster intialization
+     % this step can be implemented as gossip algorithm
+     if is_init
+        for i = 1 : length(veh_ids) 
+            for j = 1 : length(veh_ids) 
+                agents{veh_ids(i)}.comm(agents{veh_ids(j)}, 'share-states');
+            end
+        end
+     end
   
     %%
     % Consensus filter
     % Code based on:
     % https://ac.els-cdn.com/S0005109816300188/1-s2.0-S0005109816300188-main.pdf?_tid=d446a434-ef8e-48ca-a025-be3f6977a7a4&acdnat=1539389828_3e199ac4f616bfd57f1dbf569fdb3b61    
     
-    [~, G] = get_local_conn(agents, veh_ids, veh_ids(1));   
-    L = get_laplacian(agents{veh_ids(1)}.id, agents, veh_ids, G);    
-    v = eig(L);
-    vnz = round(v, 4);
-    vnz = vnz(vnz > 0 );
-    vnz = unique(vnz);
+    [~, G, Adj] = get_local_conn(agents, veh_ids, veh_ids(1)); 
+    %C = create_consensus_matrix(Adj, 'laplacian-const');
+    C = create_consensus_matrix(Adj, 'max-degree');
+    %C = create_consensus_matrix(Adj, 'laplacian-vary');
     
     for i = 1 : length(veh_ids)    
 
@@ -244,70 +269,96 @@ while 1
         
     end 
         
-    % Consensus
-    old_agents = agents;
-    iter = [];
+    % Simple average to test consensus
+%     w = 1/length(veh_ids);
+%     q_sum       = w * agents{veh_ids(1)}.q;
+%     Omega_sum   = w * agents{veh_ids(1)}.Omega;
+%     dq_sum      = w * agents{veh_ids(1)}.dq;
+%     dOmega_sum  = w * agents{veh_ids(1)}.dOmega;
+%     for i = 2 : length(veh_ids)
+%         q_sum       = q_sum      + w * agents{veh_ids(i)}.q;
+%         Omega_sum   = Omega_sum  + w * agents{veh_ids(i)}.Omega;
+%         dq_sum      = dq_sum     + w * agents{veh_ids(i)}.dq;
+%         dOmega_sum  = dOmega_sum + w * agents{veh_ids(i)}.dOmega;
+%     end
+%     for i = 1 : length(veh_ids)
+%         agents{veh_ids(i)}.q        = q_sum;
+%         agents{veh_ids(i)}.Omega    = Omega_sum;
+%         agents{veh_ids(i)}.dq       = dq_sum;
+%         agents{veh_ids(i)}.dOmega   = dOmega_sum;
+%     end
     
+    % Consensus
     Omegas_est = {};
     
-    for ci = 1 : length(vnz)
-    %for ci = 1 : 50
+    iter = [];
+    %for ci = 1 : length(C)
+    for ci = 1 : 50
+        
          new_agents = agents;
+         iter_col = zeros(length(veh_ids), 1);
          
          for i = 1 : length(veh_ids)
+             
             agent = agents{veh_ids(i)};
             links = agent.links;  
             links = links(links(:, 2) < 1000, :);
             if isempty(links)
                 continue
-            end
-            
-            % get d
-            di = [];
-            for j = 1 : size(links, 1)
-                idx = find(links(j, 2) == veh_ids);
-                agent2 = agents{links(j, 2)};
-                didx = find(agent2.links(:, 2) < 1000);
-                di = [di; length(didx)];
             end            
-            d = max(di);
+             
+            % Save iterations
+            idxs = agents{sel_veh_id}.idxs;
+            iter_col(i)     = agent.q(idxs(1));
+            iter_col(i)     = norm(agent.q);
             
-            %C = eye(size(L,1)) - 1/vnz(ci)*L;
-            %C = eye(size(L,1)) - 0.05*L;
-
-            %w = C(i,i);
-            w = 1 - size(links, 1)/(d+1);
+            %w = C{ci}(i,i);
+            w = C(i,i); 
+            sum_w = w;
             q      = w * agent.q;
             Omega  = w * agent.Omega;            
             dq     = w * agent.dq;
             dOmega = w * agent.dOmega;            
-            
-            
+                        
             for j = 1 : size(links, 1)
                 idx = find(links(j, 2) == veh_ids);
                 agent2 = agents{links(j, 2)};
                 
-                %w = C(i, idx);
-                w = 1/(d+1);
-                q     = q       + w*agent2.q;
-                Omega = Omega   + w*agent2.Omega;
-                dq     = dq     + w*agent2.dq;
-                dOmega = dOmega + w*agent2.dOmega;    
+                %w = C{ci}(i, idx);
+                w      = C(i, idx); 
+                sum_w = sum_w + w;
+                q      = q       + w * agent2.q;
+                Omega  = Omega   + w * agent2.Omega;
+                dq     = dq      + w * agent2.dq;
+                dOmega = dOmega  + w * agent2.dOmega;    
             end
-            agent.q = q;
-            agent.Omega = Omega;
-            agent.dq = dq;
-            agent.dOmega = dOmega;
+                        
+            agent.q         = q;
+            agent.Omega     = Omega;
+            agent.dq        = dq;
+            agent.dOmega    = dOmega;         
 
             if sum(isnan(q)) ~= 0
-                return
+                error('Somthing went wrong! NaN value in q!')
+            end
+            
+            if abs(sum_w - 1) > 1e-5
+                error('Somthing went wrong! sum_w ~= 1!')                
             end
             
             Omegas_est{ci} = inv(Omega);            
-            agents{veh_ids(i)} = agent;            
-         end
+            agents{veh_ids(i)} = agent;        
+            
+         end         
+         
+         iter = [iter, iter_col];
          agents = new_agents;                     
     end
+    
+    figure(3); clf; hold on;
+    plot(iter');
+    title ('Convergence');
+    
     
     %gamma = length(veh_ids);
     gamma = 1;
@@ -315,13 +366,14 @@ while 1
     for i = 1 : length(veh_ids)    
 
         agent = agents{veh_ids(i)};
+        
         agent.q     = agent.q       + gamma*agent.dq;
         agent.Omega = agent.Omega   + gamma*agent.dOmega;
         P = inv(agent.Omega);
         x = P*agent.q;
         
         agent.apply_update(x, P);
-        agents{veh_id}.build_predict();  
+        agent.build_predict();  
         
         x_hat = afun_eval(agent.f, x);
         A = agent.F;
@@ -398,39 +450,51 @@ while 1
     xlabel('[m]'); ylabel('[m]');
     
     % Selected vehicle's internal states    
-    agent = agents{sel_veh_id};
-    if ~isempty(agent)
-        
-        x_hist = agent.my_x_hist();
-                
-        n = size(x_hist, 1);
-        dxy = (x_hist(end,1:4)-agent.gt(end, 1:4))';
+    if is_init == 0
+    
+        agent = agents{sel_veh_id};
+    
+        if ~isempty(agent)
 
-        figure(2); clf; hold on;                
+            x_hist = agent.my_x_hist();
+            gt = agent.gt;
 
-        subplot(4, 1, 1); hold on; 
-        plot(1:n, x_hist(:,1), 'b.-' );
-        plot(1:n, agent.gt(:, 1), 'g.-' );
-        title(sprintf('[%i] X= %.3f', sel_veh_id, dxy(1)));
-        set(gca, 'FontSize', 10);
+            % remove init periods
+            idx = find(gt(:, end) == 0);
+            x_hist = x_hist(idx, :);
+            gt = gt(idx, :);
 
-        subplot(4, 1, 2); hold on; 
-        plot(1:n,x_hist(:,2), 'b.-' );
-        plot(1:n, agent.gt(:, 2), 'g.-' );
-        title(sprintf('Y= %.3f', dxy(2)));
-        set(gca, 'FontSize', 10);
+            n = size(x_hist, 1);
+            dxy = (x_hist(end,1:agent.n_states)-agent.gt(end, 1:agent.n_states))';
 
-        subplot(4, 1, 3); hold on; 
-        plot(1:n, x_hist(:,3), 'b.-' );
-        plot(1:n, agent.gt(:, 3), 'g.-' );
-        title(sprintf('v= %.3f', dxy(3)));
-        set(gca, 'FontSize', 10);
+            figure(2); clf; hold on;                
 
-        subplot(4, 1, 4); hold on; 
-        plot(1:n, x_hist(:,4)/pi*180, 'b.-' );
-        plot(1:n, agent.gt(:, 4)/pi*180, 'g.-' );
-        title(sprintf('bearing= %.3f', dxy(4)/pi*180));  
-        set(gca, 'FontSize', 10);       
+            subplot(4, 1, 1); hold on; 
+            plot(1:n, x_hist(:,1), 'b.-' );
+            plot(1:n, gt(:, 1), 'g.-' );
+            title(sprintf('[%i] X= %.3f', sel_veh_id, dxy(1)));
+            set(gca, 'FontSize', 10);
+
+            subplot(4, 1, 2); hold on; 
+            plot(1:n,x_hist(:,2), 'b.-' );
+            plot(1:n, gt(:, 2), 'g.-' );
+            title(sprintf('Y= %.3f', dxy(2)));
+            set(gca, 'FontSize', 10);
+
+            if agent.n_states >= 4
+                subplot(4, 1, 3); hold on; 
+                plot(1:n, x_hist(:,3), 'b.-' );
+                plot(1:n, gt(:, 3), 'g.-' );
+                title(sprintf('v= %.3f', dxy(3)));
+                set(gca, 'FontSize', 10);
+
+                subplot(4, 1, 4); hold on; 
+                plot(1:n, x_hist(:,4)/pi*180, 'b.-' );
+                plot(1:n, gt(:, 4)/pi*180, 'g.-' );
+                title(sprintf('bearing= %.3f', dxy(4)/pi*180));  
+                set(gca, 'FontSize', 10);       
+            end
+        end
     end
         
     
@@ -468,6 +532,6 @@ end
 sol.agents = agents;
 sol.system_setting = system_setting;
 sol.problem = problem;
-save(sprintf('solution_consensus_%i', simulation_scenario), 'sol')
+save(['results\' sprintf('solution_consensus_%i', simulation_scenario)], 'sol')
 %save(sprintf('solution_consensus_stat_%i_%i', simulation_scenario, system_setting.sigma_GPS*10), 'sol')
 

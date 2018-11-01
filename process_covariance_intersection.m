@@ -2,6 +2,7 @@ clear variables;
 
 % Clear persistent variables
 clear CoopAgent
+clear CoopAgent2
 
 load('problem');
 
@@ -143,6 +144,7 @@ while 1
            x_init = [xy; v; b];
            P_init = eye(4,4);  
            agents{veh_id} = CoopAgent(veh_id, x_init, P_init, t, n_veh, system_setting);
+           %agents{veh_id} = CoopAgent2(veh_id, x_init, P_init, t, n_veh, system_setting);
            
             init_i = 0; % apply intialzation
             init_rewind = t;
@@ -244,9 +246,9 @@ while 1
 %        [x, P, X1, X2] = ukf_predict(agent.f, agent.x, agent.P, agent.Q);
 %        [x, P]  = ukf_update(x, z, h, P, R, X1, X2);
     
-        %agent.x = x;
-        %agent.P = P;
-        agent.apply_update(x, P);
+        agent.x = x;
+        agent.P = P;
+        %agent.apply_update(x, P);
         
     end    
  
@@ -272,7 +274,6 @@ while 1
         n   = size(Ps{1}, 1);
         I_f = zeros(n, n);
         x_f = zeros(n, 1);
-        sidx = agents{sel_veh_id}.sidx;
         I_avg = zeros(n, n);
         for i = 1 : length(w)        
             I_i = Is{i};        
@@ -288,26 +289,28 @@ while 1
         P_avg = inv(I_avg);    
 
         % Covariance visualization
-        figure(3); clf; hold on; 
-        midxs = agents{sel_veh_id}.idxs;
-        midxs = midxs(1:2);  
-        links = agents{sel_veh_id}.links;
-        for j = 1 : size(veh_ids, 1)               
-            if min(eig(Ps{j})) < 0
-                error(sprintf('P is not positive definite! Link: %i -> %i', links(j, 1), links(j, 2)));
-            else
-                error_ellipse(Ps{j}(midxs,midxs), [0 0], 'style', 'b');                        
-            end      
+        if ~isempty(agents{sel_veh_id})
+            figure(3); clf; hold on; 
+            midxs = agents{sel_veh_id}.idxs;
+            midxs = midxs(1:2);  
+            links = agents{sel_veh_id}.links;
+            for j = 1 : size(veh_ids, 1)               
+                if min(eig(Ps{j})) < 0
+                    error(sprintf('P is not positive definite! Link: %i -> %i', links(j, 1), links(j, 2)));
+                else
+                    error_ellipse(Ps{j}(midxs,midxs), [0 0], 'style', 'b');                        
+                end      
+            end
+            error_ellipse(P_f(midxs,midxs), [0 0], 'style', 'r--');
+            error_ellipse(P_avg(midxs,midxs), [0 0], 'style', 'g');
+            axis equal;
         end
-        error_ellipse(P_f(midxs,midxs), [0 0], 'style', 'r--');
-        error_ellipse(P_avg(midxs,midxs), [0 0], 'style', 'g');
-        axis equal;
 
         % Filter reset
         for i = 1 : length(veh_ids) 
-            agents{veh_ids(i)}.x = x_f;
-            agents{veh_ids(i)}.P = P_f;
-            %agents{veh_ids(i)}.apply_update(x_f, P_f);
+            %agents{veh_ids(i)}.x = x_f;
+            %agents{veh_ids(i)}.P = P_f;
+            agents{veh_ids(i)}.apply_update(x_f, P_f);
         end
     end
 
@@ -374,10 +377,9 @@ while 1
     if ~isempty(agent)
         
         x_hist = agent.my_x_hist();
+                
         n = size(x_hist, 1);
-        
-        idxs = agent.idxs;
-        dxy = (x_hist(end,1:4)-agent.gt(end, 1:4))';
+        dxy = (x_hist(end,1:agent.n_states)-agent.gt(end, 1:agent.n_states))';
 
         figure(2); clf; hold on;                
 
@@ -393,19 +395,20 @@ while 1
         title(sprintf('Y= %.3f', dxy(2)));
         set(gca, 'FontSize', 10);
 
-        subplot(4, 1, 3); hold on; 
-        plot(1:n, x_hist(:,3), 'b.-' );
-        plot(1:n, agent.gt(:, 3), 'g.-' );
-        title(sprintf('v= %.3f', dxy(3)));
-        set(gca, 'FontSize', 10);
+        if agent.n_states >= 4
+            subplot(4, 1, 3); hold on; 
+            plot(1:n, x_hist(:,3), 'b.-' );
+            plot(1:n, agent.gt(:, 3), 'g.-' );
+            title(sprintf('v= %.3f', dxy(3)));
+            set(gca, 'FontSize', 10);
 
-        subplot(4, 1, 4); hold on; 
-        plot(1:n, x_hist(:,4)/pi*180, 'b.-' );
-        plot(1:n, agent.gt(:, 4)/pi*180, 'g.-' );
-        title(sprintf('bearing= %.3f', dxy(4)/pi*180));  
-        set(gca, 'FontSize', 10);       
+            subplot(4, 1, 4); hold on; 
+            plot(1:n, x_hist(:,4)/pi*180, 'b.-' );
+            plot(1:n, agent.gt(:, 4)/pi*180, 'g.-' );
+            title(sprintf('bearing= %.3f', dxy(4)/pi*180));  
+            set(gca, 'FontSize', 10);       
+        end
     end
-        
     
     % Show sparisty of P
 %     figure(3);
@@ -441,6 +444,6 @@ sol.agents = agents;
 sol.system_setting = system_setting;
 sol.problem = problem;
 %save(sprintf('solution_ci_%i_%i', simulation_scenario, system_setting.sigma_GPS*10), 'sol')
-save(sprintf('solution_ci_%i', simulation_scenario), 'sol')
+%save(['results\' sprintf('solution_ci_%i', simulation_scenario)], 'sol')
 
 

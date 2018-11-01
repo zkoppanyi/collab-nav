@@ -3,11 +3,11 @@ clear variables
 simulation_settings;
 
 
-sims{1} = 'solution_centralized';
-sims{2} = 'solution_state_sharing';
-sims{3} = 'solution_ci';
-sims{4} = 'solution_ci2';
-sims{5} = 'solution_consensus';
+sims{1} = 'results\solution_centralized';
+sims{2} = 'results\solution_state_sharing';
+sims{3} = 'results\solution_ci';
+sims{4} = 'results\solution_ci2';
+sims{5} = 'results\solution_consensus';
 
 
 form_t = 100; to_t = 130;

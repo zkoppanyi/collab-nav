@@ -272,6 +272,19 @@ for t = form_t : dt : to_t
    end     
     
    
+    
+    %% Visualization and analytics
+    
+    % Observability
+    idxs = [];
+    for i = 1 : length(veh_ids)
+        sidx = (agents{veh_ids(i)}.sid-1)*n_states+1;
+        idxs = [idxs, sidx:(sidx+n_states-1)];
+    end
+    H_o = [H_int(idxs, idxs); H_ext(:, idxs)];
+    O = obsv(F(idxs, idxs), H_o);
+    fprintf('Obs: %i =? %i\n', rank(O), min(size(O)));       
+    
     % Covariance visualization
     figure(3); clf; hold on; 
     Ps = agents{sel_veh_id}.P;
@@ -283,8 +296,7 @@ for t = form_t : dt : to_t
         end      
     end
     axis equal;
-    
-    %% Visualization and analytics
+
     
     % Vehicles positions and communication links
     figure(1); clf; hold on;

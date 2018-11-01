@@ -3,10 +3,10 @@ clear variables
 simulation_settings;
 
 
-sims{1} = 'solution_centralized';
-sims{2} = 'solution_ci';
-sims{3} = 'solution_consensus';
-
+sims{1} = 'results\solution_centralized';
+%sims{2} = 'results\solution_state_sharing';
+sims{2} = 'results\solution_ci';
+sims{3} = 'results\solution_consensus';
 
 form_t = 100; to_t = 130;
 simulation_scenario = 3;
@@ -40,7 +40,7 @@ for sim_i = 1 : length(sims)
             
             if sim_i >= 2
                 idx = (agent.gt(:, end) == 0);
-                idx = idx(1:size(agent.x_hist, 1));
+                %idx = idx(1:size(agent.x_hist, 1));
                 dxy = agent.gt(idx, 1:2) - agent.x_hist(idx, idxs); 
                 t = agent.gt(idx, 5);                                 
             else            
@@ -60,12 +60,13 @@ for sim_i = 1 : length(sims)
 %            end
            stat = [stat; t, mean(err_t), median(err_t), length(err_t)];
         end
+        stat = stat(~isnan(stat(:, 2)), :);
 
         idx = find(stat(:,2) < Inf);
         %plot(stat(idx,1), stat(idx,3), [cols(test_i) '.-']);
         n_veh = medfilt1(stat(:,4), 5);
 
-        B = 1/9*ones(9,1);    
+        B = 1/1*ones(1,1);    
         err_filt = filter(B,1,stat(:,3));
         %err_filt = medfilt1(stat(:,3), 5);
         %err_filt = stat(:,2);
@@ -85,7 +86,7 @@ ylabel('Average RMSE [m]');
 grid on
 ylim([0 2])
 ylabel('\Delta [m]');
-legend('Centralized', 'State sharing', 'Centralized CI', 'Scalable CI', 'Consensus')
+legend('Centralized', 'Centralized CI', 'Consensus')
 
 
 

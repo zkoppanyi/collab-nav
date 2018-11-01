@@ -37,7 +37,7 @@ elseif simulation_scenario == 2
 elseif simulation_scenario == 3
     
     system_setting.sigma_GPS = 0.1;
-    system_setting.sigma_v = 5;
+    system_setting.sigma_v = 1;
     system_setting.sigma_IMU = (15/180*pi);
     system_setting.sigma_UWB = 0.3;
     system_setting.com_radius = 200;

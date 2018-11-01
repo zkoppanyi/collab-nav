@@ -5,12 +5,12 @@ simulation_settings;
 %gps_error_tests = [0.1 0.5 1.0 5.0 10.0];
 gps_error_tests = 5.0;
 
-sims{1} = 'solution_centralized';
-sims{2} = 'solution_single';
-sims{3} = 'solution_tracking';
-sims{4} = 'solution_state_sharing';
-sims{5} = 'solution_ci_stat';
-sims{6} = 'solution_consensus_stat';
+sims{1} = 'results\solution_centralized';
+sims{2} = 'results\solution_single';
+sims{3} = 'results\solution_tracking';
+sims{4} = 'results\solution_state_sharing';
+sims{5} = 'results\solution_ci_stat';
+sims{6} = 'results\solution_consensus_stat';
 
 form_t = 100; to_t = 110;
 simulation_scenario = 1;

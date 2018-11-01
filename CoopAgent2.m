@@ -91,6 +91,8 @@ classdef CoopAgent2 < matlab.mixin.Copyable
             
                 obj.x = x;
                 obj.P = P;
+                obj.Omega = inv(P);
+                obj.q = obj.Omega * x;
                 obj.x_hist = [obj.x_hist; x2];
         end
             
@@ -151,7 +153,19 @@ classdef CoopAgent2 < matlab.mixin.Copyable
             elseif strcmp(type, 'IMU')
               
 
-            elseif strcmp(type, 'GPS+IMU')              
+            elseif strcmp(type, 'GPS+IMU')      
+                
+                obj.H_int(lsidx+0,lsidx+0)  = 1; 
+                obj.H_int(lsidx+1,lsidx+1)  = 1; 
+                
+                obj.R_int(lsidx,lsidx)     = obj.system_setting.sigma_GPS^2; 
+                obj.R_int(lsidx+1,lsidx+1) = obj.system_setting.sigma_GPS^2;
+
+                obj.h_int{lsidx+0}   =  @(x) x(lsidx);
+                obj.h_int{lsidx+1}   =  @(x) x(lsidx+1);        
+  
+                obj.z_int(lsidx+0)     =  upt(1) + normrnd(0, obj.system_setting.sigma_GPS);        
+                obj.z_int(lsidx+1)     =  upt(2) + normrnd(0, obj.system_setting.sigma_GPS);
                 
             elseif strcmp(type, 'ZUPT')
                     
@@ -204,7 +218,7 @@ classdef CoopAgent2 < matlab.mixin.Copyable
                 
                 return;
             end
-            
+                        
             obj.links = [obj.links; obj.id, agent2.id]; 
             d = sqrt((xy_gt_i(1) - xy_gt_j(1))^2 + (xy_gt_i(2) - xy_gt_j(2))^2);
             d = d + normrnd(0, obj.system_setting.sigma_UWB);                  % Simulate ranging      
@@ -268,6 +282,8 @@ classdef CoopAgent2 < matlab.mixin.Copyable
                  idxs_j = agent2.idxs;
                  obj.x(idxs_j) = agent2.x(idxs_j);
                  obj.P(idxs_j, idxs_j) = agent2.P(idxs_j, idxs_j);
+                 obj.q(idxs_j) = agent2.q(idxs_j);
+                 obj.Omega(idxs_j, idxs_j) = agent2.Omega(idxs_j, idxs_j);
                  obj.tracked = [obj.tracked; agent2.id];
                  %fprintf('Tracking: %i -> %i\n', obj.id, agent2.id);
               %end
