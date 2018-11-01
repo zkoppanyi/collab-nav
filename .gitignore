@@ -8,6 +8,7 @@ figures/*
 problems/*
 results/*
 sumo/*
+depricated/*
 
 # Prerequisites
 *.d

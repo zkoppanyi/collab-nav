@@ -1,38 +1,62 @@
-clear variables;
+if ~exist('is_batch_process', 'var')
+    clear variables;
+    clear agents;
+    
+    method = 3;
+end
 
 % Clear persistent variables
 clear CoopAgent
 clear CoopAgent2
 
+% Load problem
 load('problem');
 
-%% Related materials:
-
-% [1] Overview of federated filtering: "Federated Filtering Revisited: New Directions to Distributed Systems Estimation and Filtering – a Case Study"
-% [2] Original F-EKF paper (1988): https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=195473
-% [3] Investigation on information sharing factor: https://pubs.acs.org/doi/pdf/10.1021/ie0511175
-% [4] Proposed information sharing factor based on local filters covariances: https://pdfs.semanticscholar.org/5eea/21a9db2448c07234b99c94ed6015c27d643c.pdf
-% [5] Information-sharing factor based on median and predicated states: "Federated Filtering Revisited: New Directions to Distributed Systems Estimation and Filtering – a Case Study"
-% [6] Original covariance intersection paper: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=609105
-
-
-
-%% Settings 
-
-system_setting.AOI = [750 1100; 1250 1600];                                 % Area of interest
-                                                                            % Selected vehicle ID
-viz_frame_rate = 0.1;                                                       % Frame rate for visualization
-dt = 0.05;
-
-% Error characterization
 simulation_settings;
+    
+%% Methods' settings
+% 1 - Tracking
+% 2 - Naive state sharing
+% 3 - Global CI
+% 4 - Local CI
+% 5 - Consensus
 
+if method == 1
+    
+    m_name = 'tracking';
+    is_share_states = 0;
+    init_time = 0.1/dt;
+    
+elseif method == 2
+    
+    m_name = 'state_sharing';
+    is_share_states = 1;   
+    init_time = 0.1/dt;
+    
+elseif method == 3
+    
+    m_name = 'global_ci';
+    is_share_states = 0;
+    init_time = 0.2/dt;
+    
+elseif method == 4
+    
+    m_name = 'local_ci';
+    is_share_states = 0;
+    init_time = 0.2/dt;
+    
+elseif method == 5
+    
+    m_name = 'consensus';
+    is_share_states = 0;
+    init_time = 0.2/dt;
+    
+end
+
+    
 %% Initialization
+
 roads = problem.roads;
-% plot(problem.vehicles(:, 2), problem.vehicles(:, 3), 'k.')
-% axis equal;
-%system_setting.com_radius = 100;
-sel_veh_id  = 10; 
 
 % Get timestamps
 ts = problem.vehicles(:,1);
@@ -49,7 +73,7 @@ for t = form_t : dt*5 : to_t
     veh_ids_total = [veh_ids_total; veh_ids]; 
 end
 veh_ids_total = unique(veh_ids_total);
-%veh_ids_total = [10 16 8 20 13 6 17];
+%veh_ids_total = [10 16 8 20 13 6 17];  % fixed ids
 %agents{length(veh_ids_total)} = {};
 agents{250} = {};
 
@@ -58,7 +82,7 @@ set(gcf,'Position',[50 200 500 500])
 figure(2); clf; hold on;                
 set(gcf,'Position',[600 200 800 700])
 
-%% Algorithm
+%% Simulation Algorithm
 
 % Init filter
 n_veh = length(veh_ids_total);
@@ -66,20 +90,15 @@ n_states = 4;
 x_m = zeros(n_veh*n_states, 1);
 P_m = eye(n_veh*n_states, n_veh*n_states);
 
+% For initialization periods
 init_rewind = form_t;
 init_i = 0;
-init_time = 0.5/dt;
 is_init = 0;
-weights = [];
 t = form_t;
 iter_i = 0;
 
-while 1
+while t <= to_t
 
-    if t >= to_t
-        break;
-    end
-    
     if init_i < init_time
         t = init_rewind;
         init_i = init_i + 1;
@@ -90,7 +109,7 @@ while 1
         iter_i = iter_i + 1;
     end
     
-    fprintf("Time: %.3f\n", t);     
+    fprintf("t= %.1f\n", t);     
     
     idx = find( abs(problem.vehicles(:, 1) - t) < dt/2 );
     epoch = problem.vehicles(idx, :);
@@ -103,12 +122,11 @@ while 1
     epoch = epoch(and(and(and(epoch(:,3) > system_setting.AOI (1,1), epoch(:,3) < system_setting.AOI (1,2)), epoch(:,4) > system_setting.AOI (2,1)), epoch(:,4) < system_setting.AOI (2,2)), :);   
            
     % Vehicles at the current epoch
-    veh_ids = unique(epoch(:,2));     
-    
+    veh_ids = unique(epoch(:,2));       
 %     if isempty(find(veh_ids == sel_veh_id, 1))
 %         continue;
 %     end
-
+    
     % Fixed number of vehicles
     rm_idx = [];
     for i = 1 : length(veh_ids)
@@ -117,7 +135,6 @@ while 1
         end
     end
     veh_ids(rm_idx) = [];
-    
     
     % New cycle; reset internal variables
      for i = 1 : length(agents)
@@ -137,7 +154,6 @@ while 1
         xy = inter_obs(3:4)';
         b  = inter_obs(5)/180*pi;
         v  = inter_obs(6);
-        upt = [xy', v, b, t, is_init];  
         
         % Initialization
         if isempty(agents{veh_id})
@@ -146,6 +162,7 @@ while 1
            agents{veh_id} = CoopAgent(veh_id, x_init, P_init, t, n_veh, system_setting);
            %agents{veh_id} = CoopAgent2(veh_id, x_init, P_init, t, n_veh, system_setting);
            
+            is_init = 1;
             init_i = 0; % apply intialzation
             init_rewind = t;
         end        
@@ -153,7 +170,9 @@ while 1
         % Build prediction: F, f, Q
         agents{veh_id}.build_predict();         
        
-        % Measurement\observation        
+        % Inter-node measurement\observation update
+        upt = [xy', v, b, t, is_init];  
+
         if is_init == 1
 %            agents{veh_id}.build_int_update('GPS', upt); % init mode
             agents{veh_id}.build_int_update('ZUPT', upt);
@@ -195,10 +214,33 @@ while 1
             if isempty(agents{veh_id_j})
                 continue;
             end                      
+                
+            % State sharing if applicable: only local internal states shared
+            if is_share_states == 1
+                agents{veh_id}.comm(agents{veh_id_j}, 'share-states');
+                agents{veh_id_j}.comm(agents{veh_id}, 'share-states');
+            end
+
+            % Apply UWB update only, if this vehilce didn't do earlier
+            if ~isempty(agents{veh_id}.links)
+                if isempty(find( agents{veh_id}.links(:, 2) == veh_id_j ))
+                    agents{veh_id}.comm(agents{veh_id_j}, 'UWB'); 
+                end
+            else
+                agents{veh_id}.comm(agents{veh_id_j}, 'UWB'); 
+            end
             
-            %agents{veh_id}.comm(agents{veh_id_j}, 'share-states');
-            agents{veh_id}.comm(agents{veh_id_j}, 'UWB');            
-            fprintf('%i ', veh_id_j);                        
+            % Apply UWB update only, if other vehilce didn't do so
+            if ~isempty(agents{veh_id_j}.links)
+                if isempty(find( agents{veh_id_j}.links(:, 2) == veh_id ))
+                    agents{veh_id_j}.comm(agents{veh_id}, 'UWB');            
+                end
+            else
+                agents{veh_id_j}.comm(agents{veh_id}, 'UWB');
+            end
+            
+            fprintf('%i ', veh_id_j);  
+            
         end        
         fprintf('\n');
         
@@ -223,114 +265,40 @@ while 1
          end
      end
      
-    %% Run the local filters individually
-    for i = 1 : length(veh_ids)    
-
-        veh_id = veh_ids(i);
-        agent = agents{veh_id};
-        if isempty(agent), continue; end
-        
-        % Assemble external and internal obs.
-        H = [agent.H_int; agent.H_ext]; 
-        z = [agent.z_int; agent.z_ext]; 
-        R_add = diag( ones(length(agent.z_ext), 1)*system_setting.sigma_UWB^2 );
-        R_int = agent.R_int;
-        R = [R_int, zeros(size(R_int, 1), size(R_add, 2));  zeros(size(R_add, 1), size(R_int, 1)), R_add];
-        h = afun_concat(agent.h_int, agent.h_ext);
-     
-        % Extended Kalman filter
-         [x, P] = ekf_predict(agent.f, agent.F, agent.x, agent.P, agent.Q);
-         [x, P] = ekf_update(x, z, h, H, P, R);
-
-        % Unscented Kalman filter
-%        [x, P, X1, X2] = ukf_predict(agent.f, agent.x, agent.P, agent.Q);
-%        [x, P]  = ukf_update(x, z, h, P, R, X1, X2);
-    
-        agent.x = x;
-        agent.P = P;
-        %agent.apply_update(x, P);
-        
-    end    
- 
-    %% Covariance intersection
-    if 1
-        
-        Ps = {};
-        Is = {};
-        for i = 1 : length(veh_ids)        
-            Ps{i} = agents{veh_ids(i)}.P;
-            Is{i} = inv(agents{veh_ids(i)}.P);
-        end
-
-        w0      = ones(length(veh_ids), 1) / length(veh_ids);
-        Aeq     = ones(1, length(veh_ids));
-        beq     = 1;
-        lb      = zeros(length(veh_ids), 1);
-        ub      = ones(length(veh_ids), 1);    
-        opts    = optimoptions('fmincon','Display','off');
-        w       = fmincon(@(x) trace(inv(ci_obj_func(x, Is))), w0, [], [], Aeq, beq, lb, ub, [], opts);   
-
-        %% Collect x and P, and fuse them
-        n   = size(Ps{1}, 1);
-        I_f = zeros(n, n);
-        x_f = zeros(n, 1);
-        I_avg = zeros(n, n);
-        for i = 1 : length(w)        
-            I_i = Is{i};        
-            I_f = I_f + w(i) * I_i;
-            x_f = x_f + w(i) * I_i * agents{veh_ids(i)}.x;
-            I_avg = I_avg + I_i;        
-
-        end
-        P_f = inv(I_f);
-        x_f = P_f * x_f; 
-
-        I_avg = I_avg / length(w);
-        P_avg = inv(I_avg);    
-
-        % Covariance visualization
-        if ~isempty(agents{sel_veh_id})
-            figure(3); clf; hold on; 
-            midxs = agents{sel_veh_id}.idxs;
-            midxs = midxs(1:2);  
-            links = agents{sel_veh_id}.links;
-            for j = 1 : size(veh_ids, 1)               
-                if min(eig(Ps{j})) < 0
-                    error(sprintf('P is not positive definite! Link: %i -> %i', links(j, 1), links(j, 2)));
-                else
-                    error_ellipse(Ps{j}(midxs,midxs), [0 0], 'style', 'b');                        
-                end      
-            end
-            error_ellipse(P_f(midxs,midxs), [0 0], 'style', 'r--');
-            error_ellipse(P_avg(midxs,midxs), [0 0], 'style', 'g');
-            axis equal;
-        end
-
-        % Filter reset
+     % Initialize all vehciles: faster intialization
+     % this step can be implemented as gossip algorithm
+     if is_init
         for i = 1 : length(veh_ids) 
-            %agents{veh_ids(i)}.x = x_f;
-            %agents{veh_ids(i)}.P = P_f;
-            agents{veh_ids(i)}.apply_update(x_f, P_f);
+            for j = 1 : length(veh_ids) 
+                agents{veh_ids(i)}.comm(agents{veh_ids(j)}, 'share-states');
+            end
         end
-    end
+     end
+  
+   %% Methods
+   
+   if or(method == 1, method == 2)
+        process_tracking;
+   elseif method == 3
+        process_global_ci;
+    elseif method == 4
+        process_local_ci;        
+   elseif method == 5
+        process_consensus;       
+   end
 
-    
-    
     %% Visualization and analytics
     
     % Vehicles positions and communication links
     figure(1); clf; hold on;
-    if is_init
+     if is_init
         title(sprintf("init t= %.3f\n", t));
-    else
-        title(sprintf("t= %.3f\n", t));
-    end
+     end
     
     plot(roads(:, 1), roads(:, 2), 'k.');  
     if ~isempty(infra_nodes)
         plot(infra_nodes(:, 2), infra_nodes(:, 3), 'r.', 'MarkerSize', 15);    
     end
-    
     for i = 1 : length(agents)        
         if isempty(agents{i}), continue; end
         
@@ -373,49 +341,60 @@ while 1
     xlabel('[m]'); ylabel('[m]');
     
     % Selected vehicle's internal states    
-    agent = agents{sel_veh_id};
-    if ~isempty(agent)
-        
-        x_hist = agent.my_x_hist();
-                
-        n = size(x_hist, 1);
-        dxy = (x_hist(end,1:agent.n_states)-agent.gt(end, 1:agent.n_states))';
+    if is_init == 0
+    
+        agent = agents{sel_veh_id};
+    
+        if ~isempty(agent)
 
-        figure(2); clf; hold on;                
+            x_hist = agent.my_x_hist();
+            gt = agent.gt;
 
-        subplot(4, 1, 1); hold on; 
-        plot(1:n, x_hist(:,1), 'b.-' );
-        plot(1:n, agent.gt(:, 1), 'g.-' );
-        title(sprintf('[%i] X= %.3f', sel_veh_id, dxy(1)));
-        set(gca, 'FontSize', 10);
+            % remove init periods
+            idx = find(gt(:, end) == 0);
+            x_hist = x_hist(idx, :);
+            gt = gt(idx, :);
 
-        subplot(4, 1, 2); hold on; 
-        plot(1:n,x_hist(:,2), 'b.-' );
-        plot(1:n, agent.gt(:, 2), 'g.-' );
-        title(sprintf('Y= %.3f', dxy(2)));
-        set(gca, 'FontSize', 10);
+            n = size(x_hist, 1);
+            dxy = (x_hist(end,1:agent.n_states)-agent.gt(end, 1:agent.n_states))';
 
-        if agent.n_states >= 4
-            subplot(4, 1, 3); hold on; 
-            plot(1:n, x_hist(:,3), 'b.-' );
-            plot(1:n, agent.gt(:, 3), 'g.-' );
-            title(sprintf('v= %.3f', dxy(3)));
+            figure(2); clf; hold on;                
+
+            subplot(4, 1, 1); hold on; 
+            plot(1:n, x_hist(:,1), 'b.-' );
+            plot(1:n, gt(:, 1), 'g.-' );
+            title(sprintf('[%i] X= %.3f', sel_veh_id, dxy(1)));
             set(gca, 'FontSize', 10);
 
-            subplot(4, 1, 4); hold on; 
-            plot(1:n, x_hist(:,4)/pi*180, 'b.-' );
-            plot(1:n, agent.gt(:, 4)/pi*180, 'g.-' );
-            title(sprintf('bearing= %.3f', dxy(4)/pi*180));  
-            set(gca, 'FontSize', 10);       
+            subplot(4, 1, 2); hold on; 
+            plot(1:n,x_hist(:,2), 'b.-' );
+            plot(1:n, gt(:, 2), 'g.-' );
+            title(sprintf('Y= %.3f', dxy(2)));
+            set(gca, 'FontSize', 10);
+
+            if agent.n_states >= 4
+                subplot(4, 1, 3); hold on; 
+                plot(1:n, x_hist(:,3), 'b.-' );
+                plot(1:n, gt(:, 3), 'g.-' );
+                title(sprintf('v= %.3f', dxy(3)));
+                set(gca, 'FontSize', 10);
+
+                subplot(4, 1, 4); hold on; 
+                plot(1:n, x_hist(:,4)/pi*180, 'b.-' );
+                plot(1:n, gt(:, 4)/pi*180, 'g.-' );
+                title(sprintf('bearing= %.3f', dxy(4)/pi*180));  
+                set(gca, 'FontSize', 10);       
+            end
         end
     end
+        
     
     % Show sparisty of P
 %     figure(3);
 %     show_sparisty_pattern(P, 3);
     
     % Compate trajectries to ground truth   
-    fprintf('Time: %.1f\n', t);    
+    fprintf('Time: %.1f Method: %s\n', t, m_name);    
     dxy_all = [];
     for i = 1 : length(veh_ids)
         if ~isempty(agents{veh_ids(i)})
@@ -433,17 +412,16 @@ while 1
     fprintf('TOTAL MEAN: [%.3f] MEDIAN: [%.3f]\n', mean(dxy_all), median(dxy_all));
     
     figure(1); 
-    if ~is_init
+     if ~is_init
         title(sprintf("t= %.3f err=%.3f\n", t, mean(dxy_all)));
-    end
-    %input('Press key: ', 's');
+     end
+    
     pause(viz_frame_rate);
 end
+
 
 sol.agents = agents;
 sol.system_setting = system_setting;
 sol.problem = problem;
-%save(sprintf('solution_ci_%i_%i', simulation_scenario, system_setting.sigma_GPS*10), 'sol')
-%save(['results\' sprintf('solution_ci_%i', simulation_scenario)], 'sol')
-
+save(['results\' sprintf('solution_%s_%i', m_name, simulation_scenario)], 'sol')
 
