@@ -1,22 +1,16 @@
 clear variables;
 
-
-
 %% Settings 
 simulation_settings;
 
 %gps_error_tests = [0.1 0.5 1.0 5.0 10.0];
-gps_error_tests = [5.0];
-
-for test_i = 1 : length(gps_error_tests)
-    system_setting.sigma_GPS = gps_error_tests(test_i);
     
-    load('problem');
-    clear agents
+load('problem');
+clear agents
 
-    
-    % Clear persistent variables
-    clear SelfishAgent
+
+% Clear persistent variables
+clear SelfishAgent
 
 %% Initialization
 roads = problem.roads;
@@ -28,7 +22,7 @@ ts = problem.vehicles(:,1);
 ts = unique(ts);
 
 %form_t = 0; to_t = 1000;
-form_t = 100; to_t = 130;
+form_t = 100; to_t = 110;
 
 dxy_all = [];
 
@@ -41,6 +35,7 @@ for t = form_t : dt*5 : to_t
     veh_ids_total = [veh_ids_total; veh_ids]; 
 end
 veh_ids_total = unique(veh_ids_total);
+veh_ids_total = [10 16 8 20 13 6 17];  % fixed ids
 %agents{length(veh_ids_total)} = {};
 agents{250} = {};
 
@@ -77,6 +72,15 @@ for t = form_t : dt : to_t
 %         continue;
 %     end
 
+    %Fixed number of vehicles
+    rm_idx = [];
+    for i = 1 : length(veh_ids)
+        if isempty(find(veh_ids(i) == veh_ids_total))
+            rm_idx = [rm_idx; i];
+        end
+    end
+    veh_ids(rm_idx) = [];
+    
      if isempty(veh_ids)
          continue;
      end
@@ -94,7 +98,7 @@ for t = form_t : dt : to_t
         xy = inter_obs(3:4)';
         b  = inter_obs(5)/180*pi;
         v  = inter_obs(6);
-        upt = [xy', v, b];
+        upt = [xy', v, b, t, 0];
         
         % Initialization
         if isempty(agents{veh_id})
@@ -159,7 +163,7 @@ for t = form_t : dt : to_t
     agent = agents{sel_veh_id};
     if ~isempty(agent)
         n = size(agent.x_hist, 1);
-        dxy = (agent.x_hist(end, :)-agent.gt(end, :))';
+        dxy = (agent.x_hist(end, 1:4)-agent.gt(end, 1:4))';
 
         figure(2); clf; hold on;                
 
@@ -210,10 +214,9 @@ for t = form_t : dt : to_t
     pause(viz_frame_rate);
 end
 
-solution_single.agents = agents;
-solution_single.system_setting = system_setting;
-solution_single.problem = problem;
-save(sprintf('solution_single_%i_%i', simulation_scenario, gps_error_tests(test_i)*10), 'solution_single')
+sol.agents = agents;
+sol.system_setting = system_setting;
+sol.problem = problem;
+save(['results\' sprintf('solution_single_%i', simulation_scenario)], 'sol')
 
-end
 

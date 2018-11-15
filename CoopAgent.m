@@ -94,7 +94,7 @@ classdef CoopAgent < matlab.mixin.Copyable
                 obj.Omega = inv(P);
                 obj.q = obj.Omega * x;
                 
-                obj.x_hist = [obj.x_hist; x2];
+                obj.x_hist = [obj.x_hist; x2, P(:)'];
         end
             
         function build_predict(obj)

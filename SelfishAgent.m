@@ -65,7 +65,7 @@ classdef SelfishAgent < handle
             
                 obj.x = x;
                 obj.P = P;
-                obj.x_hist = [obj.x_hist; x2];
+                obj.x_hist = [obj.x_hist; x2, P(:)'];
         end
             
         function build_predict(obj)

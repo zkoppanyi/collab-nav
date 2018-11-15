@@ -98,9 +98,10 @@ end
             midxs = 1:2;
             for j = 1 : size(links, 1)               
                 if min(eig(Ps{j})) < 0
-                    error(sprintf('P is not positive definite! Link: %i -> %i', links(j, 1), links(j, 2)));
+                    %error(sprintf('P is not positive definite! Link: %i -> %i', links(j, 1), links(j, 2)));
+                    fprintf(sprintf('P is not positive definite! Link: %i -> %i', links(j, 1), links(j, 2)));
                 else
-                    error_ellipse(Ps{j}(midxs,midxs), [0 0], 'style', 'b');                        
+                    %error_ellipse(Ps{j}(midxs,midxs), [0 0], 'style', 'b');                        
                 end      
             end
 
@@ -113,8 +114,8 @@ end
 %                     end      
 %                 end
 
-            error_ellipse(P_f(midxs,midxs), [0 0], 'style', 'r--');
-            error_ellipse(P_avg(midxs,midxs), [0 0], 'style', 'g');
+            %error_ellipse(P_f(midxs,midxs), [0 0], 'style', 'r--');
+            %error_ellipse(P_avg(midxs,midxs), [0 0], 'style', 'g');
             axis equal;
 
             %H = [agent.H_int; agent.H_ext];

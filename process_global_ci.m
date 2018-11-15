@@ -37,6 +37,8 @@ end
 
 %% Covariance intersection
 
+%clear Ps, Is
+
 Ps = {};
 Is = {};
 for i = 1 : length(veh_ids)        

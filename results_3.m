@@ -5,11 +5,11 @@ simulation_settings;
 
 sims{1} = 'results\solution_centralized';
 %sims{2} = 'results\solution_state_sharing';
-sims{2} = 'results\solution_ci';
+sims{2} = 'results\solution_global_ci';
 sims{3} = 'results\solution_consensus';
 
 form_t = 100; to_t = 130;
-simulation_scenario = 3;
+simulation_scenario = 4;
 
 figure(1); clf; hold on;
 cols = 'kbgmr';
@@ -66,7 +66,7 @@ for sim_i = 1 : length(sims)
         %plot(stat(idx,1), stat(idx,3), [cols(test_i) '.-']);
         n_veh = medfilt1(stat(:,4), 5);
 
-        B = 1/1*ones(1,1);    
+        B = 1/4*ones(4,1);    
         err_filt = filter(B,1,stat(:,3));
         %err_filt = medfilt1(stat(:,3), 5);
         %err_filt = stat(:,2);

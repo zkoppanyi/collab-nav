@@ -1,13 +1,12 @@
 if ~exist('is_batch_process', 'var')
-    clear variables;
-    clear agents;
-    
-    method = 3;
+    clear variables;   
+    method = 4;
 end
 
 % Clear persistent variables
 clear CoopAgent
 clear CoopAgent2
+clear agents;
 
 % Load problem
 load('problem');
@@ -43,13 +42,13 @@ elseif method == 4
     
     m_name = 'local_ci';
     is_share_states = 0;
-    init_time = 0.2/dt;
+    init_time = 0.5/dt;
     
 elseif method == 5
     
     m_name = 'consensus';
     is_share_states = 0;
-    init_time = 0.2/dt;
+    init_time = 0.5/dt;
     
 end
 
@@ -61,7 +60,7 @@ roads = problem.roads;
 % Get timestamps
 ts = problem.vehicles(:,1);
 ts = unique(ts);
-form_t = 100; to_t = 130;
+form_t = 100; to_t = 110;
 dxy_all = [];
 
 % Discover how many vehicles we have in the give time interval
@@ -73,7 +72,7 @@ for t = form_t : dt*5 : to_t
     veh_ids_total = [veh_ids_total; veh_ids]; 
 end
 veh_ids_total = unique(veh_ids_total);
-%veh_ids_total = [10 16 8 20 13 6 17];  % fixed ids
+veh_ids_total = [10 16 8 20 13 6 17];  % fixed ids
 %agents{length(veh_ids_total)} = {};
 agents{250} = {};
 
@@ -97,6 +96,8 @@ is_init = 0;
 t = form_t;
 iter_i = 0;
 
+prev_n_veh_ids = 0;
+prev_n_groups = 0;
 while t <= to_t
 
     if init_i < init_time
@@ -122,19 +123,31 @@ while t <= to_t
     epoch = epoch(and(and(and(epoch(:,3) > system_setting.AOI (1,1), epoch(:,3) < system_setting.AOI (1,2)), epoch(:,4) > system_setting.AOI (2,1)), epoch(:,4) < system_setting.AOI (2,2)), :);   
            
     % Vehicles at the current epoch
-    veh_ids = unique(epoch(:,2));       
+    veh_ids = unique(epoch(:,2));      
+    if prev_n_veh_ids ~= length(veh_ids)
+        % A vehicle left or joined: apply intialzation
+        %is_init = 1;
+        %init_i = 0; 
+        %init_rewind = t;
+    end
+    prev_n_veh_ids = length(veh_ids);
+    
 %     if isempty(find(veh_ids == sel_veh_id, 1))
 %         continue;
 %     end
     
     % Fixed number of vehicles
     rm_idx = [];
+    rm_epoch = [];
     for i = 1 : length(veh_ids)
         if isempty(find(veh_ids(i) == veh_ids_total))
-            rm_idx = [rm_idx; i];
+            rm_idx = [rm_idx; i]; 
+            idx = find(veh_ids(i) == epoch(:, 2));
+            rm_epoch = [rm_epoch; idx];
         end
     end
     veh_ids(rm_idx) = [];
+    epoch(rm_epoch, :) = [];
     
     % New cycle; reset internal variables
      for i = 1 : length(agents)
@@ -162,9 +175,10 @@ while t <= to_t
            agents{veh_id} = CoopAgent(veh_id, x_init, P_init, t, n_veh, system_setting);
            %agents{veh_id} = CoopAgent2(veh_id, x_init, P_init, t, n_veh, system_setting);
            
-            is_init = 1;
-            init_i = 0; % apply intialzation
-            init_rewind = t;
+           % A new vehicle joins: apply intialzation
+           is_init = 1;
+           init_i = 0; 
+           init_rewind = t;
         end        
             
         % Build prediction: F, f, Q
@@ -196,7 +210,7 @@ while t <= to_t
         fprintf('%i -> ', veh_id);
         
         % Add relative ranging
-        if simulation_scenario == 3
+        if simulation_scenario == 4
             dist = sqrt( (epoch(:, 3) - xy_gt(1)).^2 + (epoch(:, 4) - xy_gt(2)).^2 ) ; 
             [vals, idx] = sort(dist);
             links_loc = epoch(idx(2:4), :);                                    % neighbors            
@@ -245,7 +259,7 @@ while t <= to_t
         fprintf('\n');
         
         % Add infrastructure ranging
-        if simulation_scenario ~= 3
+        if simulation_scenario ~= 4
             if ~isempty(infra_nodes)
                 nidx = find( sqrt( (infra_nodes(:, 2) - xy_gt(1)).^2 + (infra_nodes(:, 3) - xy_gt(2)).^2 ) < system_setting.com_radius ); 
                 for j = 1 : length(nidx)
@@ -257,23 +271,50 @@ while t <= to_t
     end       
     fprintf('\n');
   
-     if simulation_scenario == 3
+     if simulation_scenario == 4
          for i = 1 : size(infra_nodes, 1)
              dist = sqrt( (infra_nodes(i, 2) - epoch(:, 3)).^2 + (infra_nodes(i, 3) - epoch(:, 4)).^2 );
              [~, nidx] = min(dist);
-             agents{epoch(nidx, 2)}.comm(infra_nodes(i, :), 'v2i');
+                agents{epoch(nidx, 2)}.comm(infra_nodes(i, :), 'v2i');
          end
      end
      
-     % Initialize all vehciles: faster intialization
-     % this step can be implemented as gossip algorithm
-     if is_init
-        for i = 1 : length(veh_ids) 
-            for j = 1 : length(veh_ids) 
-                agents{veh_ids(i)}.comm(agents{veh_ids(j)}, 'share-states');
-            end
-        end
-     end
+     % Make the communication graph fully connected
+%      [~, G, ~] = get_local_conn(agents, veh_ids, veh_ids(1));
+%      gr = conncomp(G);
+%      ugr = unique(gr);
+%      if length(ugr) > 1
+%          ref_gr = mode(gr);         
+%          idx = find(ref_gr == gr);
+%          ref_node = agents{veh_ids(idx(1))};
+%          for k = 1 : length(ugr)
+%              if ugr(k) ~= ref_gr
+%                 idx = (ugr(k) == gr);                
+%              end
+%          end
+%      end
+     
+%       [~, G, ~] = get_local_conn(agents, veh_ids, veh_ids(1));
+%       gr = conncomp(G);
+%       ugr = unique(gr);
+%       if prev_n_groups > length(ugr)
+%           
+%            % Group joins: apply intialization
+%            is_init = 1;
+%            init_i = 0; 
+%            init_rewind = t;           
+%       end
+%       prev_n_groups = length(ugr);
+    
+%      % Initialize all vehciles: faster intialization
+%      % this step can be implemented as gossip algorithm
+%      if is_init
+%         for i = 1 : length(veh_ids) 
+%             for j = 1 : length(veh_ids) 
+%                 agents{veh_ids(i)}.comm(agents{veh_ids(j)}, 'share-states');
+%             end
+%         end
+%      end
   
    %% Methods
    

@@ -7,7 +7,7 @@ viz_frame_rate = 0.1;                                                       % Fr
 dt = 0.05;
 
 if ~exist('is_batch_process', 'var')
-    simulation_scenario = 3;
+    simulation_scenario = 1;
 end
 
 if simulation_scenario == 1
@@ -49,13 +49,13 @@ elseif simulation_scenario == 3
     
 elseif simulation_scenario == 4
     
-    %system_setting.sigma_GPS = 0.1;
-    system_setting.sigma_v = 1;
-    system_setting.sigma_IMU = (15/180*pi);
+    system_setting.sigma_GPS = 0.1;
+    system_setting.sigma_v = 0.5;
+    system_setting.sigma_IMU = (5/180*pi);
     system_setting.sigma_UWB = 0.3;
     system_setting.com_radius = 200;
     system_setting.dt = dt;
 
     gps_agent = [];
-    infra_nodes = [1001 800 1540; 1002 800 1280; 1003 1000 1300; 1005 1050 1400];
+    infra_nodes = [1001 800 1540; 1002 800 1280; 1003 1000 1300; 1005 1050 1500];
 end

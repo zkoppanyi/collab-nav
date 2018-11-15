@@ -1,19 +1,13 @@
 clear variables;
 
 %% Settings 
-simulation_settings;
- 
-%gps_error_tests = [0.1 0.5 1.0 5.0 10.0];
-gps_error_tests = 10.0;
+simulation_settings; 
 
-for test_i = 1 : length(gps_error_tests)
-    system_setting.sigma_GPS = gps_error_tests(test_i);
-    
-    load('problem');
-    clear agents
+load('problem');
+clear agents
 
-    % Clear persistent variables
-    clear SelfishAgent
+% Clear persistent variables
+clear SelfishAgent
     
 %% Initialization
 roads = problem.roads;
@@ -24,7 +18,7 @@ roads = problem.roads;
 ts = problem.vehicles(:,1);
 ts = unique(ts);
 
-form_t = 100; to_t = 130;
+form_t = 100; to_t = 110;
 
 dxy_all = [];
 
@@ -37,6 +31,7 @@ for t = form_t : dt*5 : to_t
     veh_ids_total = [veh_ids_total; veh_ids]; 
 end
 veh_ids_total = unique(veh_ids_total);
+veh_ids_total = [10 16 8 20 13 6 17];  % fixed ids
 %agents{length(veh_ids_total)} = {};
 agents{250} = {};
 
@@ -73,10 +68,18 @@ for t = form_t : dt : to_t
 %         continue;
 %     end
 
-
-     if isempty(veh_ids)
-         continue;
-     end
+    % Fixed number of vehicles
+    rm_idx = [];
+    rm_epoch = [];
+    for i = 1 : length(veh_ids)
+        if isempty(find(veh_ids(i) == veh_ids_total))
+            rm_idx = [rm_idx; i]; 
+            idx = find(veh_ids(i) == epoch(:, 2));
+            rm_epoch = [rm_epoch; idx];
+        end
+    end
+    veh_ids(rm_idx) = [];
+    epoch(rm_epoch, :) = [];
 
     
     % New cycle; reset internal variables
@@ -98,7 +101,7 @@ for t = form_t : dt : to_t
         xy = inter_obs(3:4)';
         b  = inter_obs(5)/180*pi;
         v  = inter_obs(6);
-        upt = [xy', v, b];  
+        upt = [xy', v, b, t, 0];  
         
         % Initialization
         if isempty(agents{veh_id})
@@ -120,6 +123,7 @@ for t = form_t : dt : to_t
                 
     end    
     
+     %% External observations: relative ranging       
     for i = 1 : length(veh_ids)
         
         veh_id = veh_ids(i);        
@@ -128,7 +132,7 @@ for t = form_t : dt : to_t
         fprintf('%i -> ', veh_id);
         
         % Add relative ranging
-        if simulation_scenario == 3
+        if simulation_scenario == 4
             dist = sqrt( (epoch(:, 3) - xy_gt(1)).^2 + (epoch(:, 4) - xy_gt(2)).^2 ) ; 
             [vals, idx] = sort(dist);
             links_loc = epoch(idx(2:4), :);                                    % neighbors            
@@ -146,15 +150,33 @@ for t = form_t : dt : to_t
             if isempty(agents{veh_id_j})
                 continue;
             end                      
+                
+    
+            % Apply UWB update only, if this vehilce didn't do earlier
+            if ~isempty(agents{veh_id}.links)
+                if isempty(find( agents{veh_id}.links(:, 2) == veh_id_j ))
+                    agents{veh_id}.comm(agents{veh_id_j}, 'UWB'); 
+                end
+            else
+                agents{veh_id}.comm(agents{veh_id_j}, 'UWB'); 
+            end
             
-            %agents{veh_id}.comm(agents{veh_id_j}, 'share-states');
-            agents{veh_id}.comm(agents{veh_id_j}, 'UWB');            
-            fprintf('%i ', veh_id_j);                        
+            % Apply UWB update only, if other vehilce didn't do so
+            if ~isempty(agents{veh_id_j}.links)
+                if isempty(find( agents{veh_id_j}.links(:, 2) == veh_id ))
+                    agents{veh_id_j}.comm(agents{veh_id}, 'UWB');            
+                end
+            else
+                agents{veh_id_j}.comm(agents{veh_id}, 'UWB');
+            end
+            
+            fprintf('%i ', veh_id_j);  
+            
         end        
         fprintf('\n');
         
         % Add infrastructure ranging
-        if simulation_scenario ~= 3
+        if simulation_scenario ~= 4
             if ~isempty(infra_nodes)
                 nidx = find( sqrt( (infra_nodes(:, 2) - xy_gt(1)).^2 + (infra_nodes(:, 3) - xy_gt(2)).^2 ) < system_setting.com_radius ); 
                 for j = 1 : length(nidx)
@@ -166,11 +188,11 @@ for t = form_t : dt : to_t
     end       
     fprintf('\n');
   
-     if simulation_scenario == 3
+     if simulation_scenario == 4
          for i = 1 : size(infra_nodes, 1)
              dist = sqrt( (infra_nodes(i, 2) - epoch(:, 3)).^2 + (infra_nodes(i, 3) - epoch(:, 4)).^2 );
              [~, nidx] = min(dist);
-             agents{epoch(nidx, 2)}.comm(infra_nodes(i, :), 'v2i');
+                agents{epoch(nidx, 2)}.comm(infra_nodes(i, :), 'v2i');
          end
      end
     %% Collect data (agents transmitting states to master)
@@ -244,13 +266,7 @@ for t = form_t : dt : to_t
     % Extended Kalman filter        
     [x, P] = ekf_predict(f, F, x, P, Q); 
     [x, P] = ekf_update(x, z, h, H, P, R);
-    %P = eye(size(P, 1));
     
-%     figure(3)
-%     H2 = P1 == 0;    
-%     P(H2) = 0;
-%     show_sparisty_pattern(P)
-
     % Unscented Kalman filter
 %     [x, P, X1, X2] = ukf_predict(f, x, P, Q);
 %     [x, P]  = ukf_update(x, z, h, P, R, X1, X2);
@@ -268,7 +284,6 @@ for t = form_t : dt : to_t
 
         % Update agents' states        
         agent.apply_update(x(idxs), P(idxs, idxs));
-        
    end     
     
    
@@ -283,7 +298,10 @@ for t = form_t : dt : to_t
     end
     H_o = [H_int(idxs, idxs); H_ext(:, idxs)];
     O = obsv(F(idxs, idxs), H_o);
-    fprintf('Obs: %i =? %i\n', rank(O), min(size(O)));       
+    fprintf('Obs: %i =? %i\n', rank(O), min(size(O)));   
+    if rank(O) < min(size(O))
+        return
+    end
     
     % Covariance visualization
     figure(3); clf; hold on; 
@@ -312,8 +330,6 @@ for t = form_t : dt : to_t
         xy_loc_gt = agents{i}.gt(end, :);
         z_loc     = agents{i}.z_int_hist(end, :);
 
-       
-
 %         if agents{i}.id == sel_veh_id
 %             text(xy_loc_gt(1), xy_loc_gt(2)+20, sprintf('%i',  agents{i}.id), 'BackgroundColor', 'w', 'Color', 'r');
 %         else
@@ -322,11 +338,11 @@ for t = form_t : dt : to_t
         
         if ~isempty(agents{i}.links)
             links_agents = agents{i}.links(agents{i}.links(:,2) < 1000, :);
-%             for j = 1 : size(links_agents, 1)
-%                 nidx = links_agents(j, 2);
-%                 xy_loc_gt_j = agents{nidx}.gt(end, :);
-%                 plot([xy_loc_gt(1), xy_loc_gt_j(1)], [xy_loc_gt(2), xy_loc_gt_j(2)], 'g-', 'LineWidth', 1.5);
-%             end
+            for j = 1 : size(links_agents, 1)
+                nidx = links_agents(j, 2);
+                xy_loc_gt_j = agents{nidx}.gt(end, :);
+                plot([xy_loc_gt(1), xy_loc_gt_j(1)], [xy_loc_gt(2), xy_loc_gt_j(2)], 'g-', 'LineWidth', 1.5);
+            end
 
             links_infra = agents{i}.links(agents{i}.links(:,2) >= 1000, :);
             for j = 1 : size(links_infra, 1)
@@ -350,7 +366,7 @@ for t = form_t : dt : to_t
     agent = agents{sel_veh_id};
     if ~isempty(agent)
         n = size(agent.x_hist, 1);
-        dxy = (agent.x_hist(end, :)-agent.gt(end, :))';
+        dxy = (agent.x_hist(end, 1:4)-agent.gt(end, 1:4))';
 
         figure(2); clf; hold on;                
 
@@ -399,13 +415,12 @@ for t = form_t : dt : to_t
     fprintf('TOTAL MEAN: [%.3f] MEDIAN: [%.3f]\n', mean(dxy_all), median(dxy_all));
     
     pause(viz_frame_rate);
-    %return
+    
 end
 
-solution_centralized.agents = agents;
-solution_centralized.system_setting = system_setting;
-solution_centralized.problem = problem;
-%save(sprintf('solution_centralized_%i_%i', simulation_scenario, gps_error_tests(test_i)*10), 'solution_centralized')
-save(sprintf('solution_centralized_%i', simulation_scenario), 'solution_centralized')
+sol.agents = agents;
+sol.system_setting = system_setting;
+sol.problem = problem;
+save(['results\' sprintf('solution_centralized_%i', simulation_scenario)], 'sol')
 
-end
+

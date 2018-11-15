@@ -51,11 +51,11 @@ for ci = 1 : 50
      for i = 1 : length(veh_ids)
 
         agent = agents{veh_ids(i)};
-        links = agent.links;  
+        links = agent.links;          
+        if isempty(links), continue; end            
+        
         links = links(links(:, 2) < 1000, :);
-        if isempty(links)
-            continue
-        end            
+        if isempty(links), continue; end            
 
         % Save iterations
         idxs = agents{sel_veh_id}.idxs;
